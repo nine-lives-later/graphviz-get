@@ -1,7 +1,8 @@
 .git/
 .vscode/
+.idea/
 
-./connect-crmis-router
-./connect-crmis-router.*
+./graphviz-get
+./graphviz-get.*
 
 ./config.yml
