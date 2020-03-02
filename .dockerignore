@@ -1,0 +1,7 @@
+.git/
+.vscode/
+
+./connect-crmis-router
+./connect-crmis-router.*
+
+./config.yml

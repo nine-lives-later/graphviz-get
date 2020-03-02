@@ -1,0 +1,15 @@
+
+<h1>http://127.0.0.1:8080/svg</h1>
+
+<img src='http://127.0.0.1:8080/svg?
+digraph G {
+    "REST Service" [shape=box]
+    "REST Service" -> "docker-compose";
+    "REST Service" -> "Server";
+}
+'/>
+
+
+<h1>curl</h1>
+
+<pre>curl 'http://127.0.0.1:8080/svg?digraph G \{ "foo" \}' --verbose --http2-prior-knowledge</pre>
