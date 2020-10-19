@@ -143,6 +143,24 @@ func handleRequest(conn net.Conn) {
 func main() {
 	debug = os.Getenv("DEBUG") == "1"
 
+	// check if dot is actually working
+	{
+		var outputBuf bytes.Buffer
+
+		dot := exec.Command("dot", "-V")
+		dot.Stdout = &outputBuf
+		dot.Stderr = &outputBuf
+
+		err := dot.Run()
+		if err != nil {
+			fmt.Println("Error running 'dot -V':", err.Error())
+			os.Exit(1)
+		}
+
+		fmt.Printf("Graphviz version: %v\n", strings.TrimSpace(outputBuf.String()))
+	}
+
+	// open the socket
 	l, err := net.Listen("tcp", ":8080")
 	if err != nil {
 		fmt.Println("Error listening:", err.Error())
