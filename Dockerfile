@@ -1,4 +1,4 @@
-FROM golang:1.15-alpine AS builder
+FROM golang:1.17-alpine AS builder
 
 #RUN apk add --no-cache git gcc musl-dev
 
@@ -11,13 +11,13 @@ RUN go build ./...
 
 
 
-FROM alpine:3.11 as graphviz-builder
+FROM alpine:3 as graphviz-builder
 
-ARG GRAPHVIZ_VERSION=2.44.1
+ARG GRAPHVIZ_VERSION=2.50.0
 
 WORKDIR /build
 
-RUN apk add --no-cache make libtool automake autoconf pkgconfig g++ zlib-dev libpng-dev jpeg-dev groff ghostscript bison flex
+RUN apk add --no-cache make libtool automake autoconf pkgconfig g++ zlib-dev libpng-dev jpeg-dev groff ghostscript bison flex python3
 
 RUN wget -q -O graphviz.tgz https://gitlab.com/graphviz/graphviz/-/archive/${GRAPHVIZ_VERSION}/graphviz-${GRAPHVIZ_VERSION}.tar.gz
 RUN tar xzf graphviz.tgz --strip 1
@@ -28,7 +28,7 @@ RUN make && make install
 
 
 
-FROM alpine:3.11
+FROM alpine:3
 
 # do not allow embedding of images
 ENV SERVER_NAME="graphiviz-get"
