@@ -34,12 +34,16 @@ FROM alpine:3
 ENV SERVER_NAME="graphiviz-get"
 ENV GV_FILE_PATH="/var/empty"
 
-RUN mkdir -p /var/empty && chmod 0400 /var/empty
+RUN mkdir -p -m 0555 /var/empty
 
 RUN apk add --no-cache font-misc-misc libltdl
 
+RUN adduser -s /bin/sh -S -u 5741 graphviz;
+
 COPY --from=builder /build/graphviz-get /build/
 COPY --from=graphviz-builder /build/output /usr/local/
+
+USER graphviz
 
 # test if it works
 RUN /usr/local/bin/dot -V
