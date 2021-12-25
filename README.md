@@ -6,6 +6,7 @@ For the Graphviz documentation, see https://www.graphviz.org/documentation/
 
 ## Examples
 
-* [./test/test.html](HTML)
-* [./test/test.md](Markdown)
+* [HTML](./test/test.html)
+* [HTML base64](./test/base64.html)
+* [Markdown](./test/test.md)
  

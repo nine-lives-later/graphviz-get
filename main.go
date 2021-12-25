@@ -3,6 +3,7 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"encoding/base64"
 	"fmt"
 	"net"
 	"net/http"
@@ -15,7 +16,7 @@ import (
 )
 
 var debug bool
-var httpFirstLinePattern = regexp.MustCompile(`^GET /(.+)\?(.+) HTTP/1.+`)
+var httpFirstLinePattern = regexp.MustCompile(`^GET /(.+?)\?(.+) HTTP/1.+`)
 
 func newHttpResponse(status int, contentType string, body []byte) []byte {
 	var buf bytes.Buffer
@@ -42,6 +43,8 @@ func newHttpResponse(status int, contentType string, body []byte) []byte {
 
 	return buf.Bytes()
 }
+
+var base64Pattern = regexp.MustCompile(`^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$`)
 
 func handleRequest(conn net.Conn) {
 	defer conn.Close()
@@ -109,6 +112,17 @@ func handleRequest(conn net.Conn) {
 			conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode query: %v", err))))
 			return
 		}
+	}
+
+	// decode base64, if used
+	if base64Pattern.MatchString(dotgraph) {
+		bin, err := base64.StdEncoding.DecodeString(dotgraph)
+		if err != nil {
+			fmt.Println("Error: Failed to decode base64:", err.Error())
+			conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode base64: %v", err))))
+			return
+		}
+		dotgraph = string(bin)
 	}
 
 	if debug {
