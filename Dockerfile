@@ -17,12 +17,13 @@ ARG GRAPHVIZ_VERSION=2.50.0
 
 WORKDIR /build
 
-RUN apk add --no-cache make libtool automake autoconf pkgconfig g++ zlib-dev libpng-dev jpeg-dev groff ghostscript bison flex python3
+RUN apk add --no-cache make libtool automake autoconf pkgconfig g++ zlib-dev libpng-dev jpeg-dev groff ghostscript bison flex python3 expat-dev
 
 RUN wget -q -O graphviz.tgz https://gitlab.com/graphviz/graphviz/-/archive/${GRAPHVIZ_VERSION}/graphviz-${GRAPHVIZ_VERSION}.tar.gz
 RUN tar xzf graphviz.tgz --strip 1
 RUN ./autogen.sh
-RUN ./configure --prefix=/build/output
+RUN mkdir -p /build/output/include   # prevent missing dir warning
+RUN ./configure --prefix=/build/output --with-expat=yes
 RUN make && make install
 
 
