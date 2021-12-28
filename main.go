@@ -85,6 +85,8 @@ func handleRequest(conn net.Conn) {
 		contentType = "image/svg+xml; charset=utf-8"
 	case "png":
 		contentType = "image/png"
+	case "webp":
+		contentType = "image/webp"
 	case "pdf":
 		contentType = "application/pdf"
 	case "plain":
