@@ -3,8 +3,10 @@ package main
 import (
 	"bufio"
 	"bytes"
+	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"net"
 	"net/http"
 	"net/url"
@@ -124,6 +126,24 @@ func handleRequest(conn net.Conn) {
 			conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode base64: %v", err))))
 			return
 		}
+
+		// check for gzip signature
+		if len(bin) > 3 && bin[0] == 0x1f && bin[1] == 0x8b && bin[2] == 0x08 {
+			gzr, err := gzip.NewReader(bytes.NewReader(bin))
+			if err != nil {
+				fmt.Println("Error: Failed to inflate gzip:", err.Error())
+				conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err))))
+				return
+			}
+
+			bin, err = io.ReadAll(gzr)
+			if err != nil {
+				fmt.Println("Error: Failed to inflate gzip:", err.Error())
+				conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err))))
+				return
+			}
+		}
+
 		dotgraph = string(bin)
 	}
 
