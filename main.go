@@ -18,7 +18,7 @@ import (
 )
 
 var debug bool
-var httpFirstLinePattern = regexp.MustCompile(`^GET /(.+?)\?(.+) HTTP/1.+`)
+var httpFirstLinePattern = regexp.MustCompile(`^GET /(.+?)\?(.+) HTTP/1\..+`)
 
 func newHttpResponse(status int, contentType string, body []byte) []byte {
 	var buf bytes.Buffer
@@ -69,11 +69,17 @@ func handleRequest(conn net.Conn) {
 		fmt.Printf("=======> %v\n", firstLine)
 	}
 
+	// ignore any web browser standard calls
+	if strings.Contains(firstLine, "GET /favicon.ico") || strings.Contains(firstLine, "GET /robots.txt") {
+		conn.Write(newHttpResponse(http.StatusNotFound, "text/plain", []byte("Error: file not found")))
+		return
+	}
+
 	// parse the query string
 	m := httpFirstLinePattern.FindStringSubmatch(firstLine)
 
 	if len(m) <= 0 {
-		fmt.Println("Error: Failed match pattern on full path")
+		fmt.Println("Error: Failed match pattern on full path:", firstLine)
 		conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte("Error: Failed match pattern on full path")))
 		return
 	}
