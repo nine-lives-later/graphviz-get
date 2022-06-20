@@ -179,7 +179,14 @@ func handleRequest(conn net.Conn) {
 		fmt.Printf("----->>\n%v\n<<------\n\n", string(buf))
 	}
 
-	conn.Write(buf)
+	_, err = conn.Write(buf)
+	if err != nil {
+		fmt.Println("Error writing response: ", err.Error())
+	}
+	err = conn.Close()
+	if err != nil {
+		fmt.Println("Error closing connection: ", err.Error())
+	}
 }
 
 func main() {
