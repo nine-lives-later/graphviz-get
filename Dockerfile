@@ -1,4 +1,4 @@
-FROM golang:1.17-alpine AS builder
+FROM golang:1.18-alpine AS builder
 
 #RUN apk add --no-cache git gcc musl-dev
 
@@ -13,7 +13,7 @@ RUN go build ./...
 
 FROM alpine:3 as graphviz-builder
 
-ARG GRAPHVIZ_VERSION=2.50.0
+ARG GRAPHVIZ_VERSION=4.0.0
 
 WORKDIR /build
 
