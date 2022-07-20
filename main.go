@@ -183,10 +183,6 @@ func handleRequest(conn net.Conn) {
 	if err != nil {
 		fmt.Println("Error writing response: ", err.Error())
 	}
-	err = conn.Close()
-	if err != nil {
-		fmt.Println("Error closing connection: ", err.Error())
-	}
 }
 
 func main() {
