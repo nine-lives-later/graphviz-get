@@ -159,16 +159,28 @@ func handleRequest(conn net.Conn) {
 
 	// render the graph
 	var outputBuf bytes.Buffer
+	var errorBuf bytes.Buffer
 
 	dot := exec.Command("dot", "-T"+format)
 	dot.Stdin = bytes.NewBuffer([]byte(dotgraph))
 	dot.Stdout = &outputBuf
-	dot.Stderr = os.Stderr
+	dot.Stderr = &errorBuf
 
 	err := dot.Run()
 	if err != nil {
 		fmt.Println("Error:", err.Error())
-		conn.Write(newHttpResponse(http.StatusInternalServerError, "text/plain", []byte(fmt.Sprintf("Error: %v", err))))
+
+		var sb strings.Builder
+		sb.WriteString(fmt.Sprintf("Error: %v", err))
+		sb.WriteString("\n\n\n\n")
+		sb.Write(errorBuf.Bytes())
+		sb.WriteString("\n\n\n\n")
+		sb.Write(outputBuf.Bytes())
+		sb.WriteString("\n\n\n\n")
+		sb.WriteString(dotgraph)
+		sb.WriteString("\n\n\n\n")
+
+		conn.Write(newHttpResponse(http.StatusInternalServerError, "text/plain", []byte(sb.String())))
 		return
 	}
 
