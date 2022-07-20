@@ -13,7 +13,7 @@ RUN go build ./...
 
 FROM alpine:3 as graphviz-builder
 
-ARG GRAPHVIZ_VERSION=4.0.0
+ARG GRAPHVIZ_VERSION=5.0.0
 
 WORKDIR /build
 
