@@ -195,8 +195,8 @@ func main() {
 	}
 
 	// setup the http server
-	h := handleRequest
-	h = fasthttp.CompressHandler(h) // enable gzip compression
+	handler := handleRequest
+	handler = fasthttp.CompressHandler(handler) // enable gzip compression
 
 	// open the socket
 	log.Info("Listening on :8080 ...")
@@ -206,7 +206,15 @@ func main() {
 		log.Debug("Debug mode is enabled")
 	}
 
-	err := fasthttp.ListenAndServe("0.0.0.0:8080", h)
+	server := fasthttp.Server{
+		Logger:             log.WithField("service", "fasthttp"),
+		GetOnly:            true,
+		MaxRequestBodySize: 1024,                               // no request body is used in this scenario
+		ReadBufferSize:     fasthttp.DefaultMaxRequestBodySize, // all information is in the header
+		WriteBufferSize:    fasthttp.DefaultMaxRequestBodySize,
+		Handler:            handler,
+	}
+	err := server.ListenAndServe("0.0.0.0:8080")
 	if err != nil {
 		log.Fatalf("Error listening: %v", err)
 		os.Exit(1)
