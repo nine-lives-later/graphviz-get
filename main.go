@@ -1,13 +1,14 @@
 package main
 
 import (
-	"bufio"
 	"bytes"
 	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"github.com/sirupsen/logrus"
+	log "github.com/sirupsen/logrus"
+	"github.com/valyala/fasthttp"
 	"io"
-	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -17,109 +18,92 @@ import (
 	"strings"
 )
 
-var debug bool
-var httpFirstLinePattern = regexp.MustCompile(`^GET /(.+?)\?(.+) HTTP/1\..+`)
+var (
+	debug           bool
+	graphvizVersion string
+)
 
-func newHttpResponse(status int, contentType string, body []byte) []byte {
-	var buf bytes.Buffer
+func writeHttpResponse(res *fasthttp.Response, status int, contentType string, body []byte) {
+	res.Header.Set("X-Graphviz-Version", graphvizVersion)
 
-	buf.WriteString(fmt.Sprintf("HTTP/1.1 %v\r\n", status))
-	buf.WriteString("Server: get-graphviz/1.0\r\n")
+	res.Header.Set("Content-Type", contentType)
+	res.Header.Set("Content-Length", strconv.Itoa(len(body)))
 
-	buf.WriteString("Content-Type: ")
-	buf.WriteString(contentType)
-	buf.WriteString("\r\n")
+	res.Header.Set("X-Content-Type-Options", "nosniff")
 
-	buf.WriteString("Content-Length: ")
-	buf.WriteString(strconv.Itoa(len(body)))
-	buf.WriteString("\r\n")
+	// add cors headers
+	res.Header.Set("Access-Control-Allow-Origin", "*")
+	res.Header.Set("Access-Control-Allow-Methods", "GET")
+	res.Header.Set("Access-Control-Allow-Headers", "Content-Type")
 
-	buf.WriteString("Connection: close\r\n")
-	buf.WriteString("Access-Control-Allow-Origin: *\r\n")
-	buf.WriteString("Access-Control-Allow-Methods: GET\r\n")
-	buf.WriteString("Access-Control-Allow-Headers: Content-Type\r\n")
-	buf.WriteString("X-Content-Type-Options: nosniff\r\n")
-
-	buf.WriteString("\r\n")
-	buf.Write(body)
-
-	return buf.Bytes()
+	// write the body
+	res.SetBodyRaw(body)
+	res.SetStatusCode(status)
 }
 
 var base64Pattern = regexp.MustCompile(`^([A-Za-z0-9+/]{4})*([A-Za-z0-9+/]{3}=|[A-Za-z0-9+/]{2}==)?$`)
 
-func handleRequest(conn net.Conn) {
-	defer conn.Close()
+func handleRequest(ctx *fasthttp.RequestCtx) {
+	log := log.WithFields(logrus.Fields{
+		"clientIP": ctx.RemoteAddr().String(),
+		"path":     string(ctx.Path()),
+		"method":   string(ctx.Method()),
+		"id":       ctx.ID(),
+	})
 
 	if debug {
-		fmt.Printf("New connection from %v ...\n", conn.RemoteAddr())
+		log.Debug("New request...")
 	}
 
-	scanner := bufio.NewScanner(conn)
+	// do some basic routing
+	queryPath := string(ctx.Path())
+	format := queryPath[1:] // strip first slash
 
-	// read HTTP GET
-	if !scanner.Scan() {
-		fmt.Println("Failed to read first line from request")
+	var contentType string
+
+	switch queryPath {
+	case "/favicon.ico":
+		fallthrough
+	case "/robots.txt":
+		writeHttpResponse(&ctx.Response, http.StatusNotFound, "text/plain", []byte("Error: file not found"))
 		return
-	}
-
-	firstLine := scanner.Text()
-
-	if debug {
-		fmt.Printf("=======> %v\n", firstLine)
-	}
-
-	// ignore any web browser standard calls
-	if strings.Contains(firstLine, "GET /favicon.ico") || strings.Contains(firstLine, "GET /robots.txt") {
-		conn.Write(newHttpResponse(http.StatusNotFound, "text/plain", []byte("Error: file not found")))
+	case "/":
+		writeHttpResponse(&ctx.Response, http.StatusOK, "text/plain", []byte("Graphviz GET - https://github.com/nine-lives-later/graphviz-get"))
+		return
+	case "/svg":
+		contentType = "image/svg+xml; charset=utf-8"
+	case "/png":
+		contentType = "image/png"
+	case "/webp":
+		contentType = "image/webp"
+	case "/pdf":
+		contentType = "application/pdf"
+	case "/plain":
+		contentType = "text/plain"
+	default:
+		log.Errorf("Unknown format specified: '%v'", queryPath)
+		writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Unknown format specified: '%v'", format)))
 		return
 	}
 
 	// parse the query string
-	m := httpFirstLinePattern.FindStringSubmatch(firstLine)
-
-	if len(m) <= 0 {
-		fmt.Println("Error: Failed match pattern on full path:", firstLine)
-		conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte("Error: Failed match pattern on full path")))
-		return
-	}
-
-	// validate the format
-	format := m[1]
-	var contentType string
-
-	switch format {
-	case "svg":
-		contentType = "image/svg+xml; charset=utf-8"
-	case "png":
-		contentType = "image/png"
-	case "webp":
-		contentType = "image/webp"
-	case "pdf":
-		contentType = "application/pdf"
-	case "plain":
-		contentType = "text/plain"
-	default:
-		fmt.Printf("Error: Unknown format specified: '%v'\n", format)
-		conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Unknown format specified: '%v'", format))))
-		return
-	}
-
-	// get the graph
-	dotgraph := m[2]
+	dotgraph := ctx.QueryArgs().String()
 	if dotgraph == "" {
-		fmt.Println("Error: No query specified (the part after the questionmark)")
-		conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte("Error: No query specified (the part after the questionmark)")))
+		log.Errorf("No query specified (the part after the questionmark)")
+		writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte("Error: No query specified (the part after the questionmark)"))
 		return
 	}
+
+	dotgraph = strings.Replace(dotgraph, "=%3D", "==", 1) // fix fasthttp forcing url encoding on base64 '==' ending
+	dotgraph = strings.ReplaceAll(dotgraph, "%2F", "/")   // fix fasthttp forcing url encoding on '/'
 
 	// decode, if encoded
 	if strings.Contains(dotgraph, "%20") {
 		var err error
 		dotgraph, err = url.QueryUnescape(dotgraph)
 		if err != nil {
-			fmt.Println("Error: Failed to decode query:", err.Error())
-			conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode query: %v", err))))
+			log.Errorf("Failed to decode query: %v", err)
+			writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode query: %v", err)))
 			return
 		}
 	}
@@ -128,8 +112,8 @@ func handleRequest(conn net.Conn) {
 	if base64Pattern.MatchString(dotgraph) {
 		bin, err := base64.StdEncoding.DecodeString(dotgraph)
 		if err != nil {
-			fmt.Println("Error: Failed to decode base64:", err.Error())
-			conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode base64: %v", err))))
+			log.Errorf("Failed to decode base64: %v", err)
+			writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to decode base64: %v", err)))
 			return
 		}
 
@@ -137,15 +121,15 @@ func handleRequest(conn net.Conn) {
 		if len(bin) > 3 && bin[0] == 0x1f && bin[1] == 0x8b && bin[2] == 0x08 {
 			gzr, err := gzip.NewReader(bytes.NewReader(bin))
 			if err != nil {
-				fmt.Println("Error: Failed to inflate gzip:", err.Error())
-				conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err))))
+				log.Errorf("Failed to inflate gzip: %v", err)
+				writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err)))
 				return
 			}
 
 			bin, err = io.ReadAll(gzr)
 			if err != nil {
-				fmt.Println("Error: Failed to inflate gzip:", err.Error())
-				conn.Write(newHttpResponse(http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err))))
+				log.Errorf("Failed to inflate gzip: %v", err)
+				writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err)))
 				return
 			}
 		}
@@ -154,7 +138,7 @@ func handleRequest(conn net.Conn) {
 	}
 
 	if debug {
-		fmt.Printf("------>\n%v\n<-------\n", dotgraph)
+		log.Debugf("------>\n%v\n<-------", dotgraph)
 	}
 
 	// render the graph
@@ -168,7 +152,7 @@ func handleRequest(conn net.Conn) {
 
 	err := dot.Run()
 	if err != nil {
-		fmt.Println("Error:", err.Error())
+		log.Errorf("Running dot failed: %v", err)
 
 		var sb strings.Builder
 		sb.WriteString(fmt.Sprintf("Error: %v", err))
@@ -180,21 +164,12 @@ func handleRequest(conn net.Conn) {
 		sb.WriteString(dotgraph)
 		sb.WriteString("\n\n\n\n")
 
-		conn.Write(newHttpResponse(http.StatusInternalServerError, "text/plain", []byte(sb.String())))
+		writeHttpResponse(&ctx.Response, http.StatusInternalServerError, "text/plain", []byte(sb.String()))
 		return
 	}
 
 	// write the reply
-	buf := newHttpResponse(http.StatusOK, contentType, outputBuf.Bytes())
-
-	if debug {
-		fmt.Printf("----->>\n%v\n<<------\n\n", string(buf))
-	}
-
-	_, err = conn.Write(buf)
-	if err != nil {
-		fmt.Println("Error writing response: ", err.Error())
-	}
+	writeHttpResponse(&ctx.Response, http.StatusOK, contentType, outputBuf.Bytes())
 }
 
 func main() {
@@ -210,33 +185,30 @@ func main() {
 
 		err := dot.Run()
 		if err != nil {
-			fmt.Println("Error running 'dot -V':", err.Error())
+			log.Fatalf("Error running 'dot -V': %v", err)
 			os.Exit(1)
 		}
 
-		fmt.Printf("Graphviz version: %v\n", strings.TrimSpace(outputBuf.String()))
+		graphvizVersion = strings.TrimSpace(outputBuf.String())
+
+		log.Infof("Graphviz version: %v", graphvizVersion)
 	}
+
+	// setup the http server
+	h := handleRequest
+	h = fasthttp.CompressHandler(h) // enable gzip compression
 
 	// open the socket
-	l, err := net.Listen("tcp", ":8080")
-	if err != nil {
-		fmt.Println("Error listening:", err.Error())
-		os.Exit(1)
-	}
-	defer l.Close()
-
-	fmt.Println("Listening on :8080 ...")
+	log.Info("Listening on :8080 ...")
 	if debug {
-		fmt.Println("Debug mode is enabled")
+		log.StandardLogger().SetLevel(log.DebugLevel)
+
+		log.Debug("Debug mode is enabled")
 	}
 
-	for {
-		conn, err := l.Accept()
-		if err != nil {
-			fmt.Println("Error accepting: ", err.Error())
-			continue
-		}
-
-		go handleRequest(conn)
+	err := fasthttp.ListenAndServe("0.0.0.0:8080", h)
+	if err != nil {
+		log.Fatalf("Error listening: %v", err)
+		os.Exit(1)
 	}
 }
