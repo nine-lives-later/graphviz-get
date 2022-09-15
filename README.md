@@ -9,5 +9,6 @@ For the Graphviz documentation, see https://www.graphviz.org/documentation/
 * [HTML](./test/test.html)
 * [HTML base64](./test/base64.html)
 * [HTML base64 gzip](./test/base64_gzip.html)
+* [HTML base64 brotli](./test/base64_brotli.html)
 * [Markdown](./test/test.md)
  

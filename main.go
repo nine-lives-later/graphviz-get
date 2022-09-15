@@ -5,6 +5,7 @@ import (
 	"compress/gzip"
 	"encoding/base64"
 	"fmt"
+	"github.com/andybalholm/brotli"
 	"github.com/sirupsen/logrus"
 	log "github.com/sirupsen/logrus"
 	"github.com/valyala/fasthttp"
@@ -130,6 +131,21 @@ func handleRequest(ctx *fasthttp.RequestCtx) {
 			if err != nil {
 				log.Errorf("Failed to inflate gzip: %v", err)
 				writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate gzip: %v", err)))
+				return
+			}
+		}
+
+		// check for (unofficial) brotli signature
+		// (see https://github.com/google/brotli/issues/298 for details)
+		if len(bin) > 4 && bin[0] == 0xce && bin[1] == 0xb2 && bin[2] == 0xcf && bin[3] == 0x81 {
+			bin = bin[4:] // brotli signature is unofficial, skip it
+
+			gzr := brotli.NewReader(bytes.NewReader(bin))
+
+			bin, err = io.ReadAll(gzr)
+			if err != nil {
+				log.Errorf("Failed to inflate brotli: %v", err)
+				writeHttpResponse(&ctx.Response, http.StatusBadRequest, "text/plain", []byte(fmt.Sprintf("Error: Failed to inflate brotli: %v", err)))
 				return
 			}
 		}
