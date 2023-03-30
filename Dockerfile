@@ -1,4 +1,4 @@
-FROM golang:1.19-alpine3.16 AS builder
+FROM golang:1.20-alpine3.17 AS builder
 
 #RUN apk add --no-cache git gcc musl-dev
 
@@ -11,7 +11,7 @@ RUN go build ./...
 
 
 
-FROM alpine:3.16 as graphviz-builder
+FROM alpine:3.17 as graphviz-builder
 
 ARG GRAPHVIZ_VERSION=5.0.0
 
@@ -34,7 +34,7 @@ RUN make && make install
 
 
 
-FROM alpine:3.16
+FROM alpine:3.17
 
 # do not allow embedding of images
 ENV SERVER_NAME="graphiviz-get"
